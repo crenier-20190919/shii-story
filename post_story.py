@@ -25,7 +25,15 @@ IMAGES_DIR = ROOT / "images"
 STATE_FILE = ROOT / "state.json"
 HOLIDAYS_FILE = ROOT / "holidays.txt"
 
-API = "https://graph.instagram.com/v23.0"
+# トークンの種類で接続先を切り替える
+#   IGAA… (Instagramログイン)        → graph.instagram.com
+#   EAA…  (Facebookページのトークン) → graph.facebook.com + IG_USER_ID
+IG_API = "https://graph.instagram.com/v23.0"
+FB_API = "https://graph.facebook.com/v23.0"
+API = IG_API
+
+# 古着インスタ(@shii_usedclothing_yokkaichi)のユーザーID
+IG_USER_ID = "17841471087160653"
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 # 日曜・祝日に使う画像(images フォルダ内のファイル名)
@@ -109,8 +117,15 @@ def api(method, path, params):
 
 
 def post_story(token, image_url):
-    me = api("GET", "me", {"fields": "user_id,username", "access_token": token})
-    user_id = me.get("user_id") or me.get("id")
+    global API
+    if token.startswith("IG"):
+        API = IG_API
+        me = api("GET", "me", {"fields": "user_id,username", "access_token": token})
+        user_id = me.get("user_id") or me.get("id")
+    else:
+        API = FB_API
+        user_id = IG_USER_ID
+        me = api("GET", user_id, {"fields": "username", "access_token": token})
     print(f"アカウント: @{me.get('username')}")
 
     container = api("POST", f"{user_id}/media", {
@@ -136,7 +151,7 @@ def post_story(token, image_url):
 # ---------- メイン ----------
 
 def main():
-    token = os.environ.get("IG_TOKEN")
+    token = (os.environ.get("IG_TOKEN") or "").strip()
     if not token:
         sys.exit("IG_TOKEN が設定されていません(GitHubのSecretsを確認してください)")
 
