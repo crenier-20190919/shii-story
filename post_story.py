@@ -116,7 +116,7 @@ def api(method, path, params):
         raise RuntimeError(f"Instagram APIエラー ({e.code}): {body}") from None
 
 
-def post_story(token, image_url):
+def _post_once(token, image_url):
     global API
     if token.startswith("IG"):
         API = IG_API
@@ -146,6 +146,19 @@ def post_story(token, image_url):
 
     result = api("POST", f"{user_id}/media_publish", {"creation_id": cid, "access_token": token})
     print(f"投稿しました(media id: {result.get('id')})")
+
+
+def post_story(token, image_url):
+    # インスタ側でたまたま失敗することがあるので、最大3回までやり直す
+    for attempt in range(1, 4):
+        try:
+            return _post_once(token, image_url)
+        except RuntimeError as e:
+            print(f"{attempt}回目の投稿に失敗: {e}")
+            if attempt == 3:
+                raise
+            print("2分待ってやり直します")
+            time.sleep(120)
 
 
 # ---------- メイン ----------
