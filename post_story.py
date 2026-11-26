@@ -1,7 +1,7 @@
 """
 営業開始ストーリーを毎朝自動投稿するプログラム(古着 shii 用)
 
-- 日曜・祝日は SUNDAY_IMAGE(phonto 5)を投稿
+- 日曜・祝日は、番号が「00」のファイル(phonto 00, phonto 00a …)を順番に投稿
 - それ以外の日は、残りの画像を番号順(番号なしが最初)にローテーション
 - 休み:第2・第4火曜 / 12月31日〜1月5日 / holidays.txt に書いた日付
 - 投稿に成功した日だけ順番を進める(state.json に記録)
@@ -37,7 +37,7 @@ IG_USER_ID = "17841471087160653"
 JST = datetime.timezone(datetime.timedelta(hours=9))
 
 # 日曜・祝日に使う画像(images フォルダ内のファイル名)
-SUNDAY_IMAGE = "phonto 5.JPG"
+SUNDAY_PATTERN = re.compile(r"(^|\s)00")  # 名前の番号が 00 で始まるものが日祝用
 
 
 # ---------- 休みの判定 ----------
@@ -185,16 +185,17 @@ def main():
     if not images:
         sys.exit("images フォルダにJPEG画像がありません")
 
-    sunday = next((p for p in images if p.name.lower() == SUNDAY_IMAGE.lower()), None)
-    rotation = sorted((p for p in images if p != sunday), key=lambda p: (number_in_name(p), p.name))
+    sunday_files = sorted((p for p in images if SUNDAY_PATTERN.search(p.stem)), key=lambda p: p.name.lower())
+    rotation = sorted((p for p in images if p not in sunday_files), key=lambda p: (number_in_name(p), p.name))
 
-    use_sunday = is_sunday_or_holiday(today) and sunday is not None
+    use_sunday = is_sunday_or_holiday(today) and bool(sunday_files)
     if use_sunday:
-        image = sunday
+        sidx = state.get("sunday_next", 0) % len(sunday_files)
+        image = sunday_files[sidx]
         print(f"今日は日曜・祝日なので {image.name} を使います")
     else:
         if is_sunday_or_holiday(today):
-            print(f"注意:{SUNDAY_IMAGE} が見つからないので、通常のローテーションで投稿します")
+            print("注意:日祝用(00)の画像が見つからないので、通常のローテーションで投稿します")
         idx = state.get("next", 0) % len(rotation)
         image = rotation[idx]
         print(f"今日の画像: {image.name}({idx + 1}/{len(rotation)}枚目)")
@@ -204,7 +205,9 @@ def main():
     image_url = f"https://raw.githubusercontent.com/{repo}/{sha}/images/{urllib.parse.quote(image.name)}"
     post_story(token, image_url)
 
-    if not use_sunday:
+    if use_sunday:
+        state["sunday_next"] = (sidx + 1) % len(sunday_files)
+    else:
         state["next"] = (idx + 1) % len(rotation)
     state["last_posted"] = str(today)
     save_state(state)
